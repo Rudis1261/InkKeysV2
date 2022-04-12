@@ -61,4 +61,3 @@ int EpdIf::IfInit(void) {
     SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
     return 0;
 }
-

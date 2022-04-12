@@ -1,19 +1,41 @@
-#include "settings.h" //Customize your settings in settings.h!
-
+#include "settings.h" // Customize your settings in settings.h!
 #include <Adafruit_NeoPixel.h>
 #include <Encoder.h>
 #include <GxEPD2_BW.h>          
 #include <Bounce2.h>
 #include <HID-Project.h>
-// #include <HID-Settings.h>
 #include <SPI.h>
-//#include "epd2in9_V2.h"
 #include "epdpaint.h"
 #include "fonts.h"
-//#include "imagedata.h"
 
 #define COLORED     0
 #define UNCOLORED   1
+
+enum { VOLUME, BRIGHTNESS, ROTATE };
+int currentState = VOLUME;
+
+byte rows[] = { 6, 7 };
+const int rowCount = sizeof(rows) / sizeof(rows[0]);
+
+byte cols[] = { 2, 3, 4, 5 };
+const int colCount = sizeof(cols) / sizeof(cols[0]);
+
+byte keyValues = 0;
+
+int ledKeyIndex[] = { 0, 7, 1, 6, 2, 5, 3, 4 };
+
+volatile long oldPosition = 0;
+
+int minBrightness = 10;
+int maxBrightness = 160;
+int brightness = minBrightness;
+
+unsigned char image[1024];
+Paint paint(image, 0, 0); // width should be the multiple of 8 
+unsigned long time_start_ms;
+unsigned long time_now_s;
+
+Bounce2::Button rotButton;
 
 typedef struct {
   Adafruit_NeoPixel Strip;
@@ -25,55 +47,34 @@ LedStrip leds[LEDS] = {
   {
     Adafruit_NeoPixel(8, LED_KEY_PIN, NEO_GRB + NEO_KHZ800),
     "white",
-    10,
+    brightness,
   },
   {
     Adafruit_NeoPixel(12, LED_RING_PIN, NEO_GRB + NEO_KHZ800),
     "white",
-    10,
+    brightness,
   },
 };
-
-byte rows[] = { 6, 7 };
-const int rowCount = sizeof(rows) / sizeof(rows[0]);
-
-byte cols[] = { 2, 3, 4, 5 };
-const int colCount = sizeof(cols) / sizeof(cols[0]);
-
-byte keyValues = 0;
-int ledKeyIndex[] = { 0, 7, 1, 6, 2, 5, 3, 4 };
-
-Bounce2::Button rotButton;
-
-// Ring states
-enum { VOLUME, BRIGHTNESS, ROTATE };
-int currentState = VOLUME;
-
-long debounce[] = {};
-
-unsigned long lastDebounceTime = 0;
-unsigned long debounceDelay = 150;
-volatile long oldPosition = 0;
-int brightness = 10;
 
 Encoder rotary(PIN_ROTA, PIN_ROTB);
 
 GxEPD2_290_T94_V2 display(/*CS=*/CS_PIN, /*DC=*/DC_PIN, /*RST=*/RST_PIN, /*BUSY=*/BUSY_PIN);
 
-// DISPLAY
-unsigned char image[1024];
-Paint paint(image, 0, 0);    // width should be the multiple of 8 
-unsigned long time_start_ms;
-unsigned long time_now_s;
-//Epd epd;
-// DISPLAY
-
-void initDisplay() {
-  display.init(0, true, 0, false);
+void clearDisplay() {
   display.writeScreenBuffer();
   display.refresh();
   display.writeScreenBufferAgain();
   display.powerOff();
+}
+
+void printMode(char* mode) {  
+  paint.SetWidth(128);
+  paint.SetHeight(20);
+  paint.SetRotate(ROTATE_180);
+  paint.Clear(UNCOLORED);
+  paint.DrawStringAt(10, 4, mode, &Font16, COLORED);
+  display.writeImage(paint.GetImage(), 1, 1, paint.GetWidth(), paint.GetHeight(), true, false, false);
+  display.refresh(true);
 }
 
 void printTestImage() {  
@@ -95,20 +96,20 @@ void printTestImage() {
   display.refresh(true);
 }
 
+// func predefs
+void RainbowCycle(uint16_t ledIndex, uint8_t wait = 10, int times = 1);
+
 void setup() {
   Serial.begin(57600);
-
   Consumer.begin();
 
-  // Clear the screen
-  initDisplay();
+  display.init(0, true, 0, false);
 
   currentState = -1;
   pinMode(ROT_PIN, INPUT_PULLUP);
   rotButton.attach(ROT_PIN);
   rotButton.setPressedState(LOW);
   rotButton.interval(10);
-  beginState(VOLUME);
 
   for (int x = 0; x < rowCount; x++) {
     Serial.print(rows[x]);
@@ -131,7 +132,10 @@ void setup() {
     leds[i].Strip.show();
   }
 
-  delay(5000);
+  delay(15000);
+  RainbowCycle(1);
+  clearDisplay();
+  beginState(VOLUME);
 }
 
 void FillLeds(uint32_t color) {
@@ -222,20 +226,8 @@ void RotBrightness() {
   if (brightness < 0) brightness = 0;
   if (brightness > 100) brightness = 100;
 
-  // DEBUGGING
-  Serial.print("BRIGHTNESS: ");
-  Serial.print(brightness);
-  Serial.print(", BEFORE: ");
-  Serial.print(before);
-  Serial.print(", NEW: ");
-  Serial.print(newPosition);
-  Serial.print(", OLD: ");
-  Serial.print(oldPosition);
-  Serial.print(", DELTA: ");
-  Serial.println(delta);
-
   // We don't want 100% (255) brightness, it's just too much for the little LEDS
-  LedBrightness(map(brightness, 0, 100, 10, 200));
+  LedBrightness(map(brightness, 0, 100, minBrightness, maxBrightness));
   FillLeds(Adafruit_NeoPixel::Color(255, 255, 255));
 }
 
@@ -284,58 +276,63 @@ void beginState( int state ) {
   // Reset position to the current rotary knob value
   oldPosition = rotary.read();
 
+  // Clear the display when switching modes
+//  clearDisplay();
+
   // Use state to update UI
   switch (currentState) {
     case VOLUME:
-      SetPixelColor(Adafruit_NeoPixel::Color(50, 255, 255), 1, 0);
+      Serial.println("Switching mode to Volume");
+      printMode("  VOLUME");
       break;
     case BRIGHTNESS:
-      SetPixelColor(Adafruit_NeoPixel::Color(50, 255, 255), 1, 0);
+      Serial.println("Switching mode to Brightness");
+      printMode("BRIGHTNESS");
       SetPixelColor(Adafruit_NeoPixel::Color(50, 255, 255), 1, 1);
       break;
     case ROTATE:
-      initDisplay();
-      SetPixelColor(Adafruit_NeoPixel::Color(50, 255, 255), 1, 0);
+      Serial.println("Switching mode to Rotate");
+      printMode("  ROTATE");
       SetPixelColor(Adafruit_NeoPixel::Color(50, 255, 255), 1, 1);
       SetPixelColor(Adafruit_NeoPixel::Color(50, 255, 255), 1, 2);
       break;
   }
+  // Always at least one LED
+  SetPixelColor(Adafruit_NeoPixel::Color(50, 255, 255), 1, 0);
   ShowLeds();
-  delay(500);
+  delay(200);
+}
+
+void switchState() {
+  if (rotButton.pressed()) {
+    currentState++;
+    if (currentState > 2) currentState = 0;
+  }
 }
 
 void checkState() {
+  FillLeds(Adafruit_NeoPixel::Color(255, 255, 255));
+  Serial.println(currentState);
   switch (currentState) {
     case VOLUME:
-      FillLeds(Adafruit_NeoPixel::Color(255, 255, 255));
       RotVolume();
-      if (rotButton.pressed()) {
-        beginState(BRIGHTNESS);
-      }
       break;
     case BRIGHTNESS:
-      FillLeds(Adafruit_NeoPixel::Color(255, 255, 255));
       RotBrightness();
       RotLowValue();
-      if (rotButton.pressed()) {
-        beginState(ROTATE);
-      }
       break;
     case ROTATE:
-      FillLeds(Adafruit_NeoPixel::Color(255, 255, 255));
       printTestImage();
-      if (rotButton.pressed()) {
-        beginState(VOLUME);
-      }
       break;
   }
 }
 
 void loop() {
   rotButton.update();
+  switchState();
   checkState();
   ScanButtons();
   LighKeyPressed();
   ShowLeds();
-  delay(30);
+  delay(10);
 }
