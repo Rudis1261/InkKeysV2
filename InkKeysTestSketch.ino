@@ -1,7 +1,7 @@
 #include "settings.h" // Customize your settings in settings.h!
 #include <Adafruit_NeoPixel.h>
 #include <Encoder.h>
-#include <GxEPD2_BW.h>          
+#include <GxEPD2_BW.h>
 #include <Bounce2.h>
 #include <HID-Project.h>
 #include <SPI.h>
@@ -31,7 +31,7 @@ int maxBrightness = 160;
 int brightness = minBrightness;
 
 unsigned char image[1024];
-Paint paint(image, 0, 0); // width should be the multiple of 8 
+Paint paint(image, 0, 0); // width should be the multiple of 8
 unsigned long time_start_ms;
 unsigned long time_now_s;
 
@@ -67,7 +67,7 @@ void clearDisplay() {
   display.powerOff();
 }
 
-void printMode(char* mode) {  
+void printMode(char* mode) {
   paint.SetWidth(128);
   paint.SetHeight(20);
   paint.SetRotate(ROTATE_180);
@@ -77,7 +77,7 @@ void printMode(char* mode) {
   display.refresh(true);
 }
 
-void printTestImage() {  
+void printTestImage() {
   time_now_s = (millis() - time_start_ms) / 1000;
   char time_string[] = {'0', '0', ':', '0', '0', '\0'};
   time_string[0] = time_now_s / 60 / 10 + '0';
@@ -187,7 +187,7 @@ void ScanButtons() {
   }
 }
 
-void LighKeyPressed() {
+void LightKeyPressed() {
   for (int i = 0; i < 8; i++) {
     if (bitRead(keyValues, i) == LOW) continue;
 
@@ -202,11 +202,11 @@ void RotVolume() {
 
   if (delta > 0) {
     Consumer.write(MEDIA_VOLUME_UP);
-    Serial.println("Volume UP"); 
+    Serial.println("Volume UP");
   }
   else {
     Consumer.write(MEDIA_VOLUME_DOWN);
-    Serial.println("Volume DOWN"); 
+    Serial.println("Volume DOWN");
   }
 
   oldPosition = newPosition;
@@ -267,17 +267,26 @@ uint32_t Wheel(byte WheelPos) {
   return Adafruit_NeoPixel::Color(WheelPos * 3, 255 - WheelPos * 3, 0);
 }
 
+void switchState() {
+  if (!rotButton.pressed()) return;
+
+  switch (currentState) {
+    case VOLUME:
+      beginState(BRIGHTNESS);
+      break;
+    case BRIGHTNESS:
+      beginState(ROTATE);
+      break;
+    case ROTATE:
+      beginState(VOLUME);
+      break;
+  }
+}
+
 void beginState( int state ) {
   if ( currentState == state ) return;
-
-  // VOLUME, BRIGHTNESS, ROTATE
   currentState = state;
-
-  // Reset position to the current rotary knob value
   oldPosition = rotary.read();
-
-  // Clear the display when switching modes
-//  clearDisplay();
 
   // Use state to update UI
   switch (currentState) {
@@ -297,17 +306,11 @@ void beginState( int state ) {
       SetPixelColor(Adafruit_NeoPixel::Color(50, 255, 255), 1, 2);
       break;
   }
+
   // Always at least one LED
   SetPixelColor(Adafruit_NeoPixel::Color(50, 255, 255), 1, 0);
   ShowLeds();
   delay(200);
-}
-
-void switchState() {
-  if (rotButton.pressed()) {
-    currentState++;
-    if (currentState > 2) currentState = 0;
-  }
 }
 
 void checkState() {
@@ -332,7 +335,7 @@ void loop() {
   switchState();
   checkState();
   ScanButtons();
-  LighKeyPressed();
+  LightKeyPressed();
   ShowLeds();
   delay(10);
 }
