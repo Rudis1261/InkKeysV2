@@ -26,10 +26,6 @@ int ledKeyIndex[] = { 0, 7, 1, 6, 2, 5, 3, 4 };
 
 volatile long oldPosition = 0;
 
-int minBrightness = 10;
-int maxBrightness = 160;
-int brightness = minBrightness;
-
 unsigned char image[1024];
 Paint paint(image, 0, 0); // width should be the multiple of 8
 unsigned long time_start_ms;
@@ -41,18 +37,27 @@ typedef struct {
   Adafruit_NeoPixel Strip;
   String Mode;
   int Brightness;
+  int OffsetBrightness;
+  int MinBrightness;
+  int MaxBrightness;
 } LedStrip;
 
 LedStrip leds[LEDS] = {
   {
     Adafruit_NeoPixel(8, LED_KEY_PIN, NEO_GRB + NEO_KHZ800),
     "white",
-    brightness,
+    40,
+    30,
+    20,
+    160,
   },
   {
     Adafruit_NeoPixel(12, LED_RING_PIN, NEO_GRB + NEO_KHZ800),
     "white",
-    brightness,
+    40,
+    0,
+    20,
+    160,
   },
 };
 
@@ -127,7 +132,7 @@ void setup() {
   for (int i = 0; i < LEDS; i++) {
     Serial.println(i);
     leds[i].Strip.begin();
-    leds[i].Strip.setBrightness(leds[i].Brightness);
+    leds[i].Strip.setBrightness(leds[i].Brightness + leds[i].OffsetBrightness);
     leds[i].Strip.fill(Adafruit_NeoPixel::Color(255, 255, 255), 0);
     leds[i].Strip.show();
   }
@@ -147,9 +152,12 @@ void ShowLeds() {
 }
 
 void LedBrightness(int brightness) {
-  brightness = abs(brightness);
-  if (brightness > 255) brightness = 255;
-  for (int i = 0; i < LEDS; i++) leds[i].Strip.setBrightness(brightness);
+  for (int i = 0; i < LEDS; i++) {
+    leds[i].Brightness = map(
+      abs(brightness), 0, 100, leds[i].MinBrightness, leds[i].MaxBrightness
+      ) + leds[i].OffsetBrightness;
+    leds[i].Strip.setBrightness(leds[i].Brightness);
+  } 
 }
 
 void SetPixelColor(uint32_t color, int stripIndex = 0, int ledIndex = 0) {
@@ -216,25 +224,24 @@ void RotBrightness() {
   long newPosition = rotary.read();
   if (newPosition == oldPosition) return;
   long delta = newPosition - oldPosition;
-  int before = brightness;
+  // int before = brightness;
 
-  if (delta > 0) brightness++;
-  else brightness--;
-  oldPosition = newPosition;
+  // if (delta > 0) brightness++;
+  // else brightness--;
+  // oldPosition = newPosition;
 
-  // Clamp the values
-  if (brightness < 0) brightness = 0;
-  if (brightness > 100) brightness = 100;
+  // // Clamp the values
+  // if (brightness < 0) brightness = 0;
+  // if (brightness > 100) brightness = 100;
 
-  // We don't want 100% (255) brightness, it's just too much for the little LEDS
-  LedBrightness(map(brightness, 0, 100, minBrightness, maxBrightness));
-  FillLeds(Adafruit_NeoPixel::Color(255, 255, 255));
+  // LedBrightness(brightness);
+  // FillLeds(Adafruit_NeoPixel::Color(255, 255, 255));
 }
 
 void RotLowValue() {
-  if (brightness < 20) {
-    SetPixelColor(Adafruit_NeoPixel::Color(0, 255, 0), 1, 0);
-  }
+  // if (brightness < 20) {
+  //   SetPixelColor(Adafruit_NeoPixel::Color(0, 255, 0), 1, 0);
+  // }
 }
 
 // Slightly different, this makes the rainbow equally distributed throughout
