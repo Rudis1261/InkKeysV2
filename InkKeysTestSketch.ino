@@ -46,18 +46,18 @@ LedStrip leds[LEDS] = {
   {
     Adafruit_NeoPixel(8, LED_KEY_PIN, NEO_GRB + NEO_KHZ800),
     "white",
-    40,
-    30,
+    10,
     20,
-    160,
+    0,
+    200,
   },
   {
     Adafruit_NeoPixel(12, LED_RING_PIN, NEO_GRB + NEO_KHZ800),
     "white",
-    40,
+    10,
     0,
-    20,
-    160,
+    0,
+    200,
   },
 };
 
@@ -143,6 +143,22 @@ void setup() {
   beginState(VOLUME);
 }
 
+void IncreaseBrightness() {
+  for (int i = 0; i < LEDS; i++) {
+    leds[i].Brightness = leds[i].Brightness + 1;
+    leds[i].Brightness = leds[i].Brightness > leds[i].MaxBrightness ? leds[i].MaxBrightness : leds[i].Brightness;
+    leds[i].Strip.setBrightness(leds[i].Brightness);
+  }
+}
+
+void DecreaseBrightness() {
+  for (int i = 0; i < LEDS; i++) {
+    leds[i].Brightness = leds[i].Brightness - 1;
+    leds[i].Brightness = leds[i].Brightness < leds[i].MinBrightness ? leds[i].MinBrightness : leds[i].Brightness;
+    leds[i].Strip.setBrightness(leds[i].Brightness);
+  }
+}
+
 void FillLeds(uint32_t color) {
   for (int i = 0; i < LEDS; i++) leds[i].Strip.fill(color, 0);
 }
@@ -150,6 +166,7 @@ void FillLeds(uint32_t color) {
 void ShowLeds() {
   for (int i = 0; i < LEDS; i++) leds[i].Strip.show();
 }
+
 
 void LedBrightness(int brightness) {
   for (int i = 0; i < LEDS; i++) {
@@ -224,24 +241,12 @@ void RotBrightness() {
   long newPosition = rotary.read();
   if (newPosition == oldPosition) return;
   long delta = newPosition - oldPosition;
-  // int before = brightness;
 
-  // if (delta > 0) brightness++;
-  // else brightness--;
-  // oldPosition = newPosition;
+  if (delta > 0) IncreaseBrightness();
+  else DecreaseBrightness();
 
-  // // Clamp the values
-  // if (brightness < 0) brightness = 0;
-  // if (brightness > 100) brightness = 100;
-
-  // LedBrightness(brightness);
-  // FillLeds(Adafruit_NeoPixel::Color(255, 255, 255));
-}
-
-void RotLowValue() {
-  // if (brightness < 20) {
-  //   SetPixelColor(Adafruit_NeoPixel::Color(0, 255, 0), 1, 0);
-  // }
+  oldPosition = newPosition;
+  delay(100);
 }
 
 // Slightly different, this makes the rainbow equally distributed throughout
@@ -282,11 +287,11 @@ void switchState() {
       beginState(BRIGHTNESS);
       break;
     case BRIGHTNESS:
-      beginState(ROTATE);
-      break;
-    case ROTATE:
       beginState(VOLUME);
       break;
+    // case ROTATE:
+    //   beginState(VOLUME);
+    //   break;
   }
 }
 
@@ -329,7 +334,6 @@ void checkState() {
       break;
     case BRIGHTNESS:
       RotBrightness();
-      RotLowValue();
       break;
     case ROTATE:
       printTestImage();
